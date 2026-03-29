@@ -1,0 +1,232 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId}
+    // Fields:
+    //   - name: string (required, < 100 chars)
+    //   - email: string (required, valid email)
+    //   - businessName: string (optional, < 100 chars)
+    //   - createdAt: timestamp (required, immutable)
+    //
+    // Collection: documents
+    // Document ID: {documentId}
+    // Fields:
+    //   - authorId: string (required, immutable, == request.auth.uid)
+    //   - type: string (required, in ['invoice', 'proforma', 'receipt'])
+    //   - documentNumber: string (required, < 50 chars)
+    //   - customerName: string (required, < 100 chars)
+    //   - customerContact: string (optional, < 100 chars)
+    //   - date: timestamp (required)
+    //   - items: list of objects (required, size < 100)
+    //     - name: string (< 100 chars)
+    //     - quantity: number (> 0)
+    //     - unitPrice: number (>= 0)
+    //     - costPrice: number (>= 0)
+    //     - total: number (>= 0)
+    //     - profit: number
+    //   - subtotal: number (>= 0)
+    //   - discount: number (>= 0)
+    //   - tax: number (>= 0)
+    //   - grandTotal: number (>= 0)
+    //   - totalCost: number (>= 0)
+    //   - totalProfit: number
+    //   - status: string (required, in ['draft', 'sent', 'paid', 'cancelled'])
+    //   - createdAt: timestamp (required, immutable)
+    //
+    // Collection: customers
+    // Document ID: {customerId}
+    // Fields:
+    //   - authorId: string (required, immutable, == request.auth.uid)
+    //   - name: string (required, < 100 chars)
+    //   - email: string (optional, valid email)
+    //   - phone: string (optional, < 50 chars)
+    //   - address: string (optional, < 500 chars)
+    //   - taxId: string (optional, < 50 chars)
+    //   - createdAt: timestamp (required, immutable)
+    //
+    // Collection: products
+    // Document ID: {productId}
+    // Fields:
+    //   - authorId: string (required, immutable, == request.auth.uid)
+    //   - name: string (required, < 100 chars)
+    //   - description: string (optional, < 500 chars)
+    //   - unitPrice: number (required, >= 0)
+    //   - costPrice: number (required, >= 0)
+    //   - createdAt: timestamp (required, immutable)
+    //
+    // Collection: expenses
+    // Document ID: {expenseId}
+    // Fields:
+    //   - authorId: string (required, immutable, == request.auth.uid)
+    //   - amount: number (required, >= 0)
+    //   - date: timestamp (required)
+    //   - category: string (required, < 100 chars)
+    //   - description: string (required, < 500 chars)
+    //   - vendor: string (optional, < 100 chars)
+    //   - createdAt: timestamp (required, immutable)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.authorId;
+    }
+
+    function uidUnchanged() {
+      return !('authorId' in request.resource.data) || request.resource.data.authorId == request.auth.uid;
+    }
+
+    function uidNotModified() {
+      return !('authorId' in request.resource.data) || request.resource.data.authorId == resource.data.authorId;
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function validStringLength(field, minLen, maxLen) {
+      return request.resource.data[field] is string &&
+        request.resource.data[field].size() >= minLen &&
+        request.resource.data[field].size() <= maxLen;
+    }
+
+    function isValidOptionalString(field, minLen, maxLen) {
+      return !(field in request.resource.data) ||
+             (request.resource.data[field] is string &&
+              request.resource.data[field].size() >= minLen &&
+              request.resource.data[field].size() <= maxLen);
+    }
+
+    function isValidEmail(email) {
+      return email is string &&
+        email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser() {
+      return hasRequiredFields(['name', 'email', 'createdAt']) &&
+             validStringLength('name', 1, 100) &&
+             isValidEmail(request.resource.data.email) &&
+             isValidOptionalString('businessName', 0, 100) &&
+             request.resource.data.createdAt is timestamp;
+    }
+
+    function isValidDocument() {
+      let data = request.resource.data;
+      return hasRequiredFields(['authorId', 'type', 'documentNumber', 'customerName', 'date', 'items', 'subtotal', 'grandTotal', 'status', 'createdAt']) &&
+             data.authorId == request.auth.uid &&
+             data.type in ['invoice', 'proforma', 'receipt'] &&
+             validStringLength('documentNumber', 1, 50) &&
+             validStringLength('customerName', 1, 100) &&
+             isValidOptionalString('customerContact', 0, 100) &&
+             data.date is timestamp &&
+             data.items is list && data.items.size() <= 100 &&
+             data.subtotal is number && data.subtotal >= 0 &&
+             (!( 'discount' in data ) || (data.discount is number && data.discount >= 0)) &&
+             (!( 'tax' in data ) || (data.tax is number && data.tax >= 0)) &&
+             data.grandTotal is number && data.grandTotal >= 0 &&
+             (!( 'totalCost' in data ) || (data.totalCost is number && data.totalCost >= 0)) &&
+             (!( 'totalProfit' in data ) || data.totalProfit is number) &&
+             data.status in ['draft', 'sent', 'paid', 'cancelled'] &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidCustomer() {
+      let data = request.resource.data;
+      return hasRequiredFields(['authorId', 'name', 'createdAt']) &&
+             data.authorId == request.auth.uid &&
+             validStringLength('name', 1, 100) &&
+             isValidOptionalString('email', 0, 100) &&
+             isValidOptionalString('phone', 0, 50) &&
+             isValidOptionalString('address', 0, 500) &&
+             isValidOptionalString('taxId', 0, 50) &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidProduct() {
+      let data = request.resource.data;
+      return hasRequiredFields(['authorId', 'name', 'unitPrice', 'costPrice', 'createdAt']) &&
+             data.authorId == request.auth.uid &&
+             validStringLength('name', 1, 100) &&
+             isValidOptionalString('description', 0, 500) &&
+             data.unitPrice is number && data.unitPrice >= 0 &&
+             data.costPrice is number && data.costPrice >= 0 &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidExpense() {
+      let data = request.resource.data;
+      return hasRequiredFields(['authorId', 'amount', 'date', 'category', 'description', 'createdAt']) &&
+             data.authorId == request.auth.uid &&
+             data.amount is number && data.amount >= 0 &&
+             data.date is timestamp &&
+             validStringLength('category', 1, 100) &&
+             validStringLength('description', 1, 500) &&
+             isValidOptionalString('vendor', 0, 100) &&
+             data.createdAt is timestamp;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUser();
+      allow update: if isOwner(userId) && isValidUser() && areImmutableFieldsUnchanged(['createdAt']);
+      allow delete: if false; // Users cannot be deleted directly from client
+    }
+
+    match /documents/{documentId} {
+      allow read: if isDocOwner();
+      allow create: if isAuthenticated() && isValidDocument() && uidUnchanged();
+      allow update: if isDocOwner() && isValidDocument() && uidNotModified() && areImmutableFieldsUnchanged(['createdAt', 'authorId']);
+      allow delete: if isDocOwner();
+    }
+
+    match /customers/{customerId} {
+      allow read: if isDocOwner();
+      allow create: if isAuthenticated() && isValidCustomer() && uidUnchanged();
+      allow update: if isDocOwner() && isValidCustomer() && uidNotModified() && areImmutableFieldsUnchanged(['createdAt', 'authorId']);
+      allow delete: if isDocOwner();
+    }
+
+    match /products/{productId} {
+      allow read: if isDocOwner();
+      allow create: if isAuthenticated() && isValidProduct() && uidUnchanged();
+      allow update: if isDocOwner() && isValidProduct() && uidNotModified() && areImmutableFieldsUnchanged(['createdAt', 'authorId']);
+      allow delete: if isDocOwner();
+    }
+
+    match /expenses/{expenseId} {
+      allow read: if isDocOwner();
+      allow create: if isAuthenticated() && isValidExpense() && uidUnchanged();
+      allow update: if isDocOwner() && isValidExpense() && uidNotModified() && areImmutableFieldsUnchanged(['createdAt', 'authorId']);
+      allow delete: if isDocOwner();
+    }
+  }
+}

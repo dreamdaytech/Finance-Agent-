@@ -1,0 +1,119 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "A user of the finance platform.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "User's full name" },
+        "email": { "type": "string", "format": "email", "description": "User's email address" },
+        "businessName": { "type": "string", "description": "Optional business name" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Account creation timestamp" }
+      },
+      "required": ["name", "email", "createdAt"]
+    },
+    "Document": {
+      "title": "Document",
+      "description": "A financial document (Invoice, Proforma, Receipt).",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string", "description": "The UID of the user who created this document" },
+        "type": { "type": "string", "enum": ["invoice", "proforma", "receipt"], "description": "Type of document" },
+        "documentNumber": { "type": "string", "description": "Auto-generated or manual document number" },
+        "customerName": { "type": "string", "description": "Name of the customer" },
+        "customerContact": { "type": "string", "description": "Phone or email of the customer" },
+        "date": { "type": "string", "format": "date-time", "description": "Date of the document" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "quantity": { "type": "number" },
+              "unitPrice": { "type": "number" },
+              "costPrice": { "type": "number" },
+              "total": { "type": "number" },
+              "profit": { "type": "number" }
+            },
+            "required": ["name", "quantity", "unitPrice", "total"]
+          }
+        },
+        "subtotal": { "type": "number", "description": "Sum of item totals" },
+        "discount": { "type": "number", "description": "Discount applied" },
+        "tax": { "type": "number", "description": "Tax applied" },
+        "grandTotal": { "type": "number", "description": "Final total after discount and tax" },
+        "totalCost": { "type": "number", "description": "Sum of item costs" },
+        "totalProfit": { "type": "number", "description": "Grand total minus total cost" },
+        "status": { "type": "string", "enum": ["draft", "sent", "paid", "cancelled"], "description": "Status of the document" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["authorId", "type", "documentNumber", "customerName", "date", "items", "subtotal", "grandTotal", "createdAt"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "A customer of the user.",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string", "description": "The UID of the user who created this customer" },
+        "name": { "type": "string", "description": "Customer's name" },
+        "email": { "type": "string", "format": "email", "description": "Customer's email address" },
+        "phone": { "type": "string", "description": "Customer's phone number" },
+        "address": { "type": "string", "description": "Customer's address" },
+        "taxId": { "type": "string", "description": "Customer's tax ID / TIN" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["authorId", "name", "createdAt"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "A product or service offered by the user.",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string", "description": "The UID of the user who created this product" },
+        "name": { "type": "string", "description": "Product or service name" },
+        "description": { "type": "string", "description": "Product description" },
+        "unitPrice": { "type": "number", "description": "Default unit price" },
+        "costPrice": { "type": "number", "description": "Default cost price" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["authorId", "name", "createdAt"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "An expense tracked by the user.",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string", "description": "The UID of the user who created this expense" },
+        "amount": { "type": "number", "description": "The amount of the expense" },
+        "date": { "type": "string", "format": "date-time", "description": "Date of the expense" },
+        "category": { "type": "string", "description": "Category of the expense" },
+        "description": { "type": "string", "description": "Description of the expense" },
+        "vendor": { "type": "string", "description": "Vendor of the expense" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["authorId", "amount", "date", "category", "description", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores user profiles."
+    },
+    "/documents/{documentId}": {
+      "schema": { "$ref": "#/entities/Document" },
+      "description": "Stores financial documents."
+    },
+    "/customers/{customerId}": {
+      "schema": { "$ref": "#/entities/Customer" },
+      "description": "Stores user's customers."
+    },
+    "/products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Stores user's products/services."
+    },
+    "/expenses/{expenseId}": {
+      "schema": { "$ref": "#/entities/Expense" },
+      "description": "Stores user's expenses."
+    }
+  }
+}
